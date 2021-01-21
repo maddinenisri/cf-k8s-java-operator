@@ -28,14 +28,61 @@ public class StackController implements ResourceController<Stack> {
     private static final String REGION = "AWS_REGION";
     private static final String DEFAULT_TAGS = "default_tags";
     private static final String DEFAULT_CAPABILITIES = "default_capabilities";
-
+    private static final String STATUS_CHECK_WAIT_TIME_IN_SEC="STATUS_CHECK_WAIT_TIME_IN_SEC";
     private static final Tag STANDARD_TAG  = new Tag().withKey("kubernetes.io/controlled-by").withValue("cloudformation.mdstechinc.com/operator");
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final KubernetesClient kubernetesClient;
+    public StackController() {}
 
-    public StackController(KubernetesClient kubernetesClient) {
-        this.kubernetesClient = kubernetesClient;
+    @Override
+    public UpdateControl<Stack> createOrUpdateResource(Stack stack, Context<Stack> context) {
+        AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
+        boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName());
+        if(isStackExist) {
+            updateStack(amazonCloudFormation, stack);
+        }
+        else {
+            createStack(amazonCloudFormation, stack);
+        }
+        try {
+            com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName());
+            StackStatus status = new StackStatus();
+            status.setStackID(cfStack.getStackId());
+            status.setOutputs(convertToOutput(cfStack.getOutputs()));
+            stack.setStatus(status);
+            return UpdateControl.updateStatusSubResource(stack);
+        }
+        catch (Exception e) {
+            log.error("Error while creating Stack", e);
+            StackStatus status = new StackStatus();
+            status.setStatus("ERROR");
+            stack.setStatus(status);
+            return UpdateControl.updateCustomResource(stack);
+        }
+    }
+
+    @Override
+    public DeleteControl deleteResource(Stack stack, Context<Stack> context) {
+        log.info("Execution deleteResource for: {}", stack.getMetadata().getName());
+        AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
+        DeleteStackRequest deleteStackRequest = new DeleteStackRequest();
+        deleteStackRequest.setStackName(stack.getMetadata().getName());
+        amazonCloudFormation.deleteStack(deleteStackRequest);
+        try {
+            com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName());
+            StackStatus status = new StackStatus();
+            status.setStackID(cfStack.getStackId());
+            status.setOutputs(convertToOutput(cfStack.getOutputs()));
+            stack.setStatus(status);
+            return DeleteControl.DEFAULT_DELETE;
+        }
+        catch (Exception e) {
+            log.error("Error while deleting Stack", e);
+            StackStatus status = new StackStatus();
+            status.setStatus("ERROR");
+            stack.setStatus(status);
+            return DeleteControl.NO_FINALIZER_REMOVAL;
+        }
     }
 
     private AmazonCloudFormation createAWSClientSession() {
@@ -72,30 +119,55 @@ public class StackController implements ResourceController<Stack> {
         if(System.getenv(DEFAULT_TAGS) != null) {
 
         }
+
+        if(tags  != null) {
+            tagList.addAll(tags.entrySet().stream().map(entry -> new Tag().withKey(entry.getKey()).withValue(entry.getValue())).collect(Collectors.toList()));
+        }
         return tagList;
     }
 
     private Collection<Parameter> convertToParameters(Map<String, String> parameters) {
+        if(parameters == null || parameters.isEmpty()) {
+            return null;
+        }
         return parameters.entrySet().stream()
                 .map(entry -> new Parameter().withParameterKey(entry.getKey()).withParameterValue(entry.getValue())).collect(Collectors.toList());
     }
 
-    private com.amazonaws.services.cloudformation.model.Stack waitForCompletion(AmazonCloudFormation stackbuilder, String stackName) throws Exception {
+    private void createStack(AmazonCloudFormation amazonCloudFormation, Stack stack) {
+        CreateStackRequest createStackRequest =  new CreateStackRequest()
+                .withStackName(stack.getMetadata().getName())
+                .withTemplateBody(stack.getSpec().getTemplate())
+                .withParameters(convertToParameters(stack.getSpec().getParameters()))
+                .withTags(convertToTags(stack.getSpec().getTags()));
+        amazonCloudFormation.createStack(createStackRequest);
+    }
+
+    private void updateStack(AmazonCloudFormation amazonCloudFormation, Stack stack) {
+        UpdateStackRequest updateStackRequest = new UpdateStackRequest().withStackName(stack.getMetadata().getName())
+                .withTemplateBody(stack.getSpec().getTemplate())
+                .withParameters(convertToParameters(stack.getSpec().getParameters()))
+                .withTags(convertToTags(stack.getSpec().getTags()));
+        amazonCloudFormation.updateStack(updateStackRequest);
+    }
+
+    private boolean isStackExist(AmazonCloudFormation amazonCloudFormation, String stackName) {
+        DescribeStacksRequest describeStacksRequest = new DescribeStacksRequest().withStackName(stackName);
+        List<com.amazonaws.services.cloudformation.model.Stack> stacks = amazonCloudFormation.describeStacks(describeStacksRequest).getStacks();
+        return !stacks.isEmpty();
+    }
+
+    private com.amazonaws.services.cloudformation.model.Stack waitForCompletion(AmazonCloudFormation amazonCloudFormation, String stackName) throws Exception {
         DescribeStacksRequest wait = new DescribeStacksRequest();
         wait.setStackName(stackName);
         Boolean completed = false;
-        String  stackStatus = "Unknown";
-        String  stackReason = "";
-
-        System.out.print("Waiting");
+        log.debug("Waiting for cloudformation stack completion");
         com.amazonaws.services.cloudformation.model.Stack lastStack = null;
         while (!completed) {
-            List<com.amazonaws.services.cloudformation.model.Stack> stacks = stackbuilder.describeStacks(wait).getStacks();
+            List<com.amazonaws.services.cloudformation.model.Stack> stacks = amazonCloudFormation.describeStacks(wait).getStacks();
             if (stacks.isEmpty())
             {
                 completed   = true;
-                stackStatus = "NO_SUCH_STACK";
-                stackReason = "Stack has been deleted";
             } else {
                 for (com.amazonaws.services.cloudformation.model.Stack stack : stacks) {
                     if (stack.getStackStatus().equals(com.amazonaws.services.cloudformation.model.StackStatus.CREATE_COMPLETE.toString()) ||
@@ -103,77 +175,34 @@ public class StackController implements ResourceController<Stack> {
                             stack.getStackStatus().equals(com.amazonaws.services.cloudformation.model.StackStatus.ROLLBACK_FAILED.toString()) ||
                             stack.getStackStatus().equals(com.amazonaws.services.cloudformation.model.StackStatus.DELETE_FAILED.toString())) {
                         completed = true;
-                        stackStatus = stack.getStackStatus();
-                        stackReason = stack.getStackStatusReason();
                         lastStack = stack;
                     }
                 }
             }
 
             // Show we are waiting
-            System.out.print(".");
-
+            log.debug("Waiting for cloudformation stack completion...");
             // Not done yet so sleep for 10 seconds.
-            if (!completed) Thread.sleep(10000);
+            if (!completed) {
+                long timeInMillis = 10000L;
+                if(System.getenv(STATUS_CHECK_WAIT_TIME_IN_SEC) != null) {
+                    timeInMillis = Long.parseLong(System.getenv(STATUS_CHECK_WAIT_TIME_IN_SEC));
+                }
+                Thread.sleep(timeInMillis);
+            }
         }
 
         // Show we are done
-        System.out.print("done\n");
+        log.info("Cloudformation process is completed");
 
         return lastStack;
     }
 
-    private Map<String, String> convertToOuptut(List<Output> outputs) {
+    private Map<String, String> convertToOutput(List<Output> outputs) {
+        if(outputs == null || outputs.isEmpty()) {
+            return null;
+        }
         return outputs.stream().collect(
                 Collectors.toMap(Output::getOutputKey, Output::getOutputValue));
-    }
-    @Override
-    public UpdateControl<Stack> createOrUpdateResource(Stack stack, Context<Stack> context) {
-        AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
-        CreateStackRequest createStackRequest =  new CreateStackRequest();
-        createStackRequest.setStackName(stack.getMetadata().getName());
-        createStackRequest.setTemplateBody(stack.getSpec().getTemplate());
-        createStackRequest.setParameters(convertToParameters(stack.getSpec().getParameters()));
-        createStackRequest.setTags(convertToTags(stack.getSpec().getTags()));
-        amazonCloudFormation.createStack(createStackRequest);
-        try {
-            com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName());
-            StackStatus status = new StackStatus();
-            status.setStackID(cfStack.getStackId());
-            status.setOutputs(convertToOuptut(cfStack.getOutputs()));
-            stack.setStatus(status);
-            return UpdateControl.updateStatusSubResource(stack);
-        }
-        catch (Exception e) {
-            log.error("Error while creating Schema", e);
-            StackStatus status = new StackStatus();
-            status.setStatus("ERROR");
-            stack.setStatus(status);
-            return UpdateControl.updateCustomResource(stack);
-        }
-    }
-
-    @Override
-    public DeleteControl deleteResource(Stack stack, Context<Stack> context) {
-        log.info("Execution deleteResource for: {}", stack.getMetadata().getName());
-        AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
-        DeleteStackRequest deleteStackRequest = new DeleteStackRequest();
-        deleteStackRequest.setStackName(stack.getMetadata().getName());
-        amazonCloudFormation.deleteStack(deleteStackRequest);
-        try {
-            com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName());
-            StackStatus status = new StackStatus();
-            status.setStackID(cfStack.getStackId());
-            status.setOutputs(convertToOuptut(cfStack.getOutputs()));
-            stack.setStatus(status);
-            return DeleteControl.DEFAULT_DELETE;
-        }
-        catch (Exception e) {
-            log.error("Error while creating Schema", e);
-            StackStatus status = new StackStatus();
-            status.setStatus("ERROR");
-            stack.setStatus(status);
-            return DeleteControl.NO_FINALIZER_REMOVAL;
-        }
     }
 }
