@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cf-stack-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cf-stack-operator
+  namespace: cf-stack-operator
+spec:
+  selector:
+    matchLabels:
+      app: cf-stack-operator
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: cf-stack-operator
+    spec:
+      serviceAccount: cf-stack-operator
+      containers:
+        - name: operator
+          image: ${DOCKER_REGISTRY}/cf-stack-operator:${OPERATOR_VERSION}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          env:
+            - name: AWS_REGION
+              value: us-east-1
+            - name: ASSUME_ROLE_ARN
+              value:
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            timeoutSeconds: 1
