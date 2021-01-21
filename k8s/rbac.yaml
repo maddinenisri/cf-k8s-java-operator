@@ -6,13 +6,13 @@ rules:
   - apiGroups:
       - cloudformartion.mdstechinc.com
     resources:
-      - schemas
+      - stacks
     verbs:
       - "*"
   - apiGroups:
       - cloudformartion.mdstechinc.com
     resources:
-      - schemas/status
+      - stacks/status
     verbs:
       - "*"
   - apiGroups:
