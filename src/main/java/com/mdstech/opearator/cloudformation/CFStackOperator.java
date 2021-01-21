@@ -19,12 +19,14 @@ public class CFStackOperator {
 
     public static void main(String[] args) throws IOException {
         log.info("CF Operator starting");
-
+        if(System.getenv(StackController.REGION) == null || System.getenv(StackController.REGION).isEmpty()) {
+            log.error("Missing region environment variables");
+            System.exit(1);
+        }
         Config config = new ConfigBuilder().withNamespace(null).build();
         KubernetesClient client = new DefaultKubernetesClient(config);
         Operator operator = new Operator(client, DefaultConfigurationService.instance());
         operator.register(new StackController());
-
         new FtBasic(new TkFork(new FkRegex("/health", "Listening on 8080")), 8080).start(Exit.NEVER);
     }
 }

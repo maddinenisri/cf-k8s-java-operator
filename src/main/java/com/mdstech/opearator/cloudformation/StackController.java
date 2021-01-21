@@ -24,11 +24,11 @@ import org.slf4j.LoggerFactory;
 
 public class StackController implements ResourceController<Stack> {
 
-    private static final String ASSUME_ROLE = "ASSUME_ROLE_ARN";
-    private static final String REGION = "AWS_REGION";
+    public static final String ASSUME_ROLE = "ASSUME_ROLE_ARN";
+    public static final String REGION = "AWS_REGION";
     private static final String DEFAULT_TAGS = "DEFAULT_TAGS";
     private static final String DEFAULT_CAPABILITIES = "DEFAULT_CAPABILITIES";
-    private static final String STATUS_CHECK_WAIT_TIME_IN_SEC="STATUS_CHECK_WAIT_TIME_IN_SEC";
+    public static final String STATUS_CHECK_WAIT_TIME_IN_SEC="STATUS_CHECK_WAIT_TIME_IN_SEC";
     private static final Tag STANDARD_TAG  = new Tag().withKey("kubernetes.io/controlled-by").withValue("cloudformation.mdstechinc.com/operator");
     private final Logger log = LoggerFactory.getLogger(getClass());
 
