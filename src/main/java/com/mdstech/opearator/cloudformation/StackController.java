@@ -26,8 +26,8 @@ public class StackController implements ResourceController<Stack> {
 
     private static final String ASSUME_ROLE = "ASSUME_ROLE_ARN";
     private static final String REGION = "AWS_REGION";
-    private static final String DEFAULT_TAGS = "default_tags";
-    private static final String DEFAULT_CAPABILITIES = "default_capabilities";
+    private static final String DEFAULT_TAGS = "DEFAULT_TAGS";
+    private static final String DEFAULT_CAPABILITIES = "DEFAULT_CAPABILITIES";
     private static final String STATUS_CHECK_WAIT_TIME_IN_SEC="STATUS_CHECK_WAIT_TIME_IN_SEC";
     private static final Tag STANDARD_TAG  = new Tag().withKey("kubernetes.io/controlled-by").withValue("cloudformation.mdstechinc.com/operator");
     private final Logger log = LoggerFactory.getLogger(getClass());
@@ -65,8 +65,7 @@ public class StackController implements ResourceController<Stack> {
     public DeleteControl deleteResource(Stack stack, Context<Stack> context) {
         log.info("Execution deleteResource for: {}", stack.getMetadata().getName());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
-        DeleteStackRequest deleteStackRequest = new DeleteStackRequest();
-        deleteStackRequest.setStackName(stack.getMetadata().getName());
+        DeleteStackRequest deleteStackRequest = new DeleteStackRequest().withStackName(stack.getMetadata().getName());
         amazonCloudFormation.deleteStack(deleteStackRequest);
         try {
             com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName());
@@ -116,8 +115,10 @@ public class StackController implements ResourceController<Stack> {
         List<Tag> tagList = new ArrayList<>();
         tagList.add(STANDARD_TAG);
 
-        if(System.getenv(DEFAULT_TAGS) != null) {
-
+        if(System.getenv(DEFAULT_TAGS) != null && !System.getenv(DEFAULT_TAGS).isEmpty()) {
+            tagList.addAll(Arrays.stream(System.getenv(DEFAULT_TAGS).split(","))
+                    .map(tag -> tag.split(":"))
+                    .map(pair -> new Tag().withKey(pair[0]).withValue(pair[1])).collect(Collectors.toList()));
         }
 
         if(tags  != null) {
@@ -134,8 +135,16 @@ public class StackController implements ResourceController<Stack> {
                 .map(entry -> new Parameter().withParameterKey(entry.getKey()).withParameterValue(entry.getValue())).collect(Collectors.toList());
     }
 
+    private Collection<String> convertToCapabilities() {
+        if(System.getenv(DEFAULT_CAPABILITIES) == null || System.getenv(DEFAULT_CAPABILITIES).isEmpty()) {
+            return null;
+        }
+        return Arrays.stream(System.getenv(DEFAULT_CAPABILITIES).split(",")).collect(Collectors.toList());
+    }
+
     private void createStack(AmazonCloudFormation amazonCloudFormation, Stack stack) {
         CreateStackRequest createStackRequest =  new CreateStackRequest()
+                .withCapabilities(convertToCapabilities())
                 .withStackName(stack.getMetadata().getName())
                 .withTemplateBody(stack.getSpec().getTemplate())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
@@ -144,7 +153,9 @@ public class StackController implements ResourceController<Stack> {
     }
 
     private void updateStack(AmazonCloudFormation amazonCloudFormation, Stack stack) {
-        UpdateStackRequest updateStackRequest = new UpdateStackRequest().withStackName(stack.getMetadata().getName())
+        UpdateStackRequest updateStackRequest = new UpdateStackRequest()
+                .withCapabilities(convertToCapabilities())
+                .withStackName(stack.getMetadata().getName())
                 .withTemplateBody(stack.getSpec().getTemplate())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
@@ -179,22 +190,16 @@ public class StackController implements ResourceController<Stack> {
                     }
                 }
             }
-
-            // Show we are waiting
             log.debug("Waiting for cloudformation stack completion...");
-            // Not done yet so sleep for 10 seconds.
             if (!completed) {
                 long timeInMillis = 10000L;
                 if(System.getenv(STATUS_CHECK_WAIT_TIME_IN_SEC) != null) {
-                    timeInMillis = Long.parseLong(System.getenv(STATUS_CHECK_WAIT_TIME_IN_SEC));
+                    timeInMillis = Long.parseLong(System.getenv(STATUS_CHECK_WAIT_TIME_IN_SEC))*1000;
                 }
                 Thread.sleep(timeInMillis);
             }
         }
-
-        // Show we are done
         log.info("Cloudformation process is completed");
-
         return lastStack;
     }
 

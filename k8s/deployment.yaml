@@ -32,6 +32,12 @@ spec:
               value: us-east-1
             - name: ASSUME_ROLE_ARN
               value:
+            - name: STATUS_CHECK_WAIT_TIME_IN_SEC
+              value: 10
+            - name: DEFAULT_TAGS
+              value: 'tag1:value1,tag2:value2'
+            - name: DEFAULT_CAPABILITIES
+              value:
           readinessProbe:
             httpGet:
               path: /health
