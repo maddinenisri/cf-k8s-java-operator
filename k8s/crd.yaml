@@ -5,7 +5,6 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.4.1
-  creationTimestamp: null
   name: stacks.cloudformation.mdstechinc.com
 spec:
   group: cloudformation.mdstechinc.com
@@ -72,9 +71,4 @@ spec:
       storage: true
       subresources:
         status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []
+

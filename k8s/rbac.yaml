@@ -4,24 +4,31 @@ metadata:
   name: cf-stack-operator
 rules:
   - apiGroups:
-      - cloudformartion.mdstechinc.com
+      - cloudformation.mdstechinc.com
     resources:
       - stacks
     verbs:
-      - "*"
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
   - apiGroups:
-      - cloudformartion.mdstechinc.com
+      - cloudformation.mdstechinc.com
+    resources:
+      - stacks/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - cloudformation.mdstechinc.com
     resources:
       - stacks/status
     verbs:
-      - "*"
-  - apiGroups:
-      - apiextensions.k8s.io
-    resources:
-      - customresourcedefinitions
-    verbs:
-      - "get"
-      - "list"
+      - get
+      - patch
+      - update
 ---
 apiVersion: v1
 kind: ServiceAccount
