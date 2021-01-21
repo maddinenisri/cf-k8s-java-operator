@@ -6,6 +6,10 @@
 ```
 
 ## Deploy into K8s
+- Create namespace
+```shell script
+  kubectl apply -f k8s/namespace.yaml
+```
 - Deploy CRD
 ```shell script
   kubectl apply -f k8s/crd.yaml
