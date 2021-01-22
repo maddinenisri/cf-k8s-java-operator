@@ -1,31 +1,44 @@
-# K8s operator for Cloudformation Stack
+# AWS Cloud Formation Kubernetes Operator
+Java based Kubernetes Operator to process AWS Cloud Formation template as custom resource definition (CRD).  
 
-## Build and Publish
+### Build command to generate docker image
 ```shell script
-  mvn -P no-integration-tests package dockerfile:build dockerfile:push
+  mvn -P no-integration-tests package dockerfile:build
+```
+### Publish docker image
+```shell script
+  mvn dockerfile:push
+```
+- Published docker image
+```shell script
+  docker pull mdstech/cf-k8s-java-operator:latest
 ```
 
-## Deploy into K8s
+## Deployment Steps into Kubernetes environment
 - Create namespace
 ```shell script
   kubectl apply -f k8s/namespace.yaml
 ```
-- Deploy CRD
+- Deploy Custom Resource Definition
 ```shell script
   kubectl apply -f k8s/crd.yaml
 ```
-- Setup RBAC
+
+- Create RBAC role and role binding and Service Account Objects
+
+Note:- Use IAM Role ARN annotation for Service Account, if "assume role arn" is not defined.
+
 ```shell script
   kubectl apply -f k8s/rbac.yaml
 ```
 
-- Deploy Pod
-Replace "DOCKER_REGISTRY" and "OPERATOR_VERSION" values dependens on build and execute template
+- Deploy Operator
+Change docker registry and operator depend on requirements
 ```shell script
   kubectl apply k8s/deployment.yaml
 ```
 
-- Deploy custom cloudformation stack
+- Deploy custom cloud formation stack
 ```shell script
 
 ```
