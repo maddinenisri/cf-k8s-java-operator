@@ -35,7 +35,7 @@ Note:- Use IAM Role ARN annotation for Service Account, if "assume role arn" is 
 - Deploy Operator
 Change docker registry and operator depend on requirements
 ```shell script
-  kubectl apply k8s/deployment.yaml
+  kubectl apply -f k8s/deployment.yaml
 ```
 
 - Deploy custom cloud formation stack

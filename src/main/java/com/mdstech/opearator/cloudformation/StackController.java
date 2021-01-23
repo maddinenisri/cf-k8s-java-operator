@@ -204,10 +204,6 @@ public class StackController implements ResourceController<Stack> {
     private boolean isStackExist(AmazonCloudFormation amazonCloudFormation, String stackName) {
         log.info("Before verifying stack exist...");
         ListStacksResult listStacksResult = amazonCloudFormation.listStacks();
-        boolean isExist = false;
-        listStacksResult.getStackSummaries().stream().forEach(stackSummary -> {
-            log.info("Stack Name" + stackSummary.getStackName());
-        });
         long count = listStacksResult.getStackSummaries().stream().filter(stackSummary -> stackSummary.getStackName().equals(stackName)).count();
         return count > 0;
     }
