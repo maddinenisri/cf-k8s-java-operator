@@ -45,6 +45,8 @@ spec:
                   type: object
                 template:
                   type: string
+                customRoleARN:
+                  type: string
               required:
                 - parameters
                 - tags
@@ -71,4 +73,3 @@ spec:
       storage: true
       subresources:
         status: {}
-

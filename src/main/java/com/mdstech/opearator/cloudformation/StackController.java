@@ -2,7 +2,8 @@ package com.mdstech.opearator.cloudformation;
 
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder;
+import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
+import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.cloudformation.AmazonCloudFormation;
 import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder;
@@ -11,7 +12,6 @@ import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
 import com.amazonaws.services.securitytoken.model.AssumeRoleRequest;
 import com.amazonaws.services.securitytoken.model.Credentials;
-import io.fabric8.kubernetes.client.KubernetesClient;
 import io.javaoperatorsdk.operator.api.*;
 
 import java.util.*;
@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.takes.misc.Opt;
 
 @Controller
 public class StackController implements ResourceController<Stack> {
@@ -37,6 +36,7 @@ public class StackController implements ResourceController<Stack> {
     private Collection<String>  defaultCapabilities;
     private List<Tag> defaultTags;
     private long statusWaitTime = 10000;
+    private String roleSessionName = "awsCFSession";
 
     public StackController() {
         initializeEnvProperties();
@@ -62,6 +62,7 @@ public class StackController implements ResourceController<Stack> {
 
     @Override
     public UpdateControl<Stack> createOrUpdateResource(Stack stack, Context<Stack> context) {
+        log.info("Execution createOrUpdateResource for: {}", stack.getMetadata().getName());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
         boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName());
         if(isStackExist) {
@@ -112,12 +113,14 @@ public class StackController implements ResourceController<Stack> {
 
     private AmazonCloudFormation createAWSClientSession() {
         if(assumeRoleArn != null) {
-            AWSSecurityTokenService sts_client = AWSSecurityTokenServiceClientBuilder.standard()
-                    .withEndpointConfiguration(
-                            new AwsClientBuilder.EndpointConfiguration("sts.amazonaws.com", region))
-                    .build();
+            log.info("Establishing AWS session by using role assume role");
+            AWSSecurityTokenService sts_client = AWSSecurityTokenServiceClientBuilder.standard().withRegion(region).build();
             Credentials credentials =
-                    sts_client.assumeRole(new AssumeRoleRequest().withRoleArn(assumeRoleArn)).getCredentials();
+                    sts_client.assumeRole(
+                            new AssumeRoleRequest()
+                                    .withRoleArn(assumeRoleArn)
+                                    .withRoleSessionName(roleSessionName))
+                            .getCredentials();
             BasicSessionCredentials sessionCredentials = new BasicSessionCredentials(
                     credentials.getAccessKeyId(),
                     credentials.getSecretAccessKey(),
@@ -130,8 +133,10 @@ public class StackController implements ResourceController<Stack> {
                     .build();
         }
         else {
+            log.info("Establishing AWS session using Service account role");
             return AmazonCloudFormationClientBuilder
                     .standard()
+                    .withCredentials(WebIdentityTokenCredentialsProvider.create())
                     .withRegion(region)
                     .build();
         }
@@ -173,9 +178,11 @@ public class StackController implements ResourceController<Stack> {
     }
 
     private void createStack(AmazonCloudFormation amazonCloudFormation, Stack stack) {
+        log.info("Execution createStack for: {}", stack.getMetadata().getName());
         CreateStackRequest createStackRequest =  new CreateStackRequest()
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
+                .withRoleARN(stack.getSpec().getCustomRoleARN())
                 .withTemplateBody(stack.getSpec().getTemplate())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
@@ -183,19 +190,26 @@ public class StackController implements ResourceController<Stack> {
     }
 
     private void updateStack(AmazonCloudFormation amazonCloudFormation, Stack stack) {
+        log.info("Execution updateStack for: {}", stack.getMetadata().getName());
         UpdateStackRequest updateStackRequest = new UpdateStackRequest()
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withTemplateBody(stack.getSpec().getTemplate())
+                .withRoleARN(stack.getSpec().getCustomRoleARN())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
         amazonCloudFormation.updateStack(updateStackRequest);
     }
 
     private boolean isStackExist(AmazonCloudFormation amazonCloudFormation, String stackName) {
-        DescribeStacksRequest describeStacksRequest = new DescribeStacksRequest().withStackName(stackName);
-        List<com.amazonaws.services.cloudformation.model.Stack> stacks = amazonCloudFormation.describeStacks(describeStacksRequest).getStacks();
-        return !stacks.isEmpty();
+        log.info("Before verifying stack exist...");
+        ListStacksResult listStacksResult = amazonCloudFormation.listStacks();
+        boolean isExist = false;
+        listStacksResult.getStackSummaries().stream().forEach(stackSummary -> {
+            log.info("Stack Name" + stackSummary.getStackName());
+        });
+        long count = listStacksResult.getStackSummaries().stream().filter(stackSummary -> stackSummary.getStackName().equals(stackName)).count();
+        return count > 0;
     }
 
     private com.amazonaws.services.cloudformation.model.Stack waitForCompletion(AmazonCloudFormation amazonCloudFormation, String stackName) throws Exception {

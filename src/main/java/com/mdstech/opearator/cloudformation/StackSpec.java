@@ -6,6 +6,7 @@ public class StackSpec {
     private Map<String, String> tags;
     private Map<String, String> parameters;
     private String template;
+    private String customRoleARN;
 
     public Map<String, String> getTags() {
         return tags;
@@ -29,5 +30,13 @@ public class StackSpec {
 
     public void setTemplate(String template) {
         this.template = template;
+    }
+
+    public String getCustomRoleARN() {
+        return customRoleARN;
+    }
+
+    public void setCustomRoleARN(String customRoleARN) {
+        this.customRoleARN = customRoleARN;
     }
 }
