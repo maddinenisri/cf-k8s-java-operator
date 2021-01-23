@@ -64,6 +64,7 @@ public class StackController implements ResourceController<Stack> {
     public UpdateControl<Stack> createOrUpdateResource(Stack stack, Context<Stack> context) {
         log.info("Execution createOrUpdateResource for: {}", stack.getMetadata().getName());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
+        stack.getMetadata().getOwnerReferences().stream().forEach(or -> log.info(or.toString()));
         boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName());
         List<com.amazonaws.services.cloudformation.model.StackStatus> statuses = null;
         if(isStackExist) {
@@ -80,18 +81,37 @@ public class StackController implements ResourceController<Stack> {
         }
         try {
             com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName(), statuses);
-            StackStatus status = new StackStatus();
-            status.setStackID(cfStack.getStackId());
-            status.setOutputs(convertToOutput(cfStack.getOutputs()));
-            stack.setStatus(status);
+            updateStatus(stack, cfStack, isStackExist);
             return UpdateControl.updateStatusSubResource(stack);
         }
         catch (Exception e) {
             log.error("Error while creating Stack", e);
-            StackStatus status = new StackStatus();
-            status.setStatus("ERROR");
-            stack.setStatus(status);
+            StackStatus stackStatus = new StackStatus();
+            stackStatus.setStatus("ERROR");
+            stack.setStatus(stackStatus);
             return UpdateControl.updateCustomResource(stack);
+        }
+    }
+
+    private boolean isEqual(Map<String, String> first, Map<String, String> second) {
+        if (first.size() != second.size()) {
+            return false;
+        }
+
+        return first.entrySet().stream()
+                .allMatch(e -> e.getValue().equals(second.get(e.getKey())));
+    }
+
+    private void updateStatus(Stack stack, com.amazonaws.services.cloudformation.model.Stack cfStack, boolean isUpdateStackEvent) {
+        Map<String, String> outputs = convertToOutput(cfStack.getOutputs());
+        if(!(isUpdateStackEvent ||
+                stack.getStatus() == null ||
+                cfStack.getStackId().equals(stack.getStatus().getStackID()) ||
+                isEqual(outputs, stack.getStatus().getOutputs()))) {
+            StackStatus status = new StackStatus();
+            status.setStackID(cfStack.getStackId());
+            status.setOutputs(outputs);
+            stack.setStatus(status);
         }
     }
 
@@ -99,16 +119,20 @@ public class StackController implements ResourceController<Stack> {
     public DeleteControl deleteResource(Stack stack, Context<Stack> context) {
         log.info("Execution deleteResource for: {}", stack.getMetadata().getName());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
+        boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName());
+        if(stack.getMetadata().getDeletionTimestamp() == null && !isStackExist) {
+            return DeleteControl.DEFAULT_DELETE;
+        }
         DeleteStackRequest deleteStackRequest = new DeleteStackRequest().withStackName(stack.getMetadata().getName());
         amazonCloudFormation.deleteStack(deleteStackRequest);
         try {
             com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName(),
                     Arrays.asList(com.amazonaws.services.cloudformation.model.StackStatus.DELETE_COMPLETE,
                             com.amazonaws.services.cloudformation.model.StackStatus.DELETE_FAILED));
-            StackStatus status = new StackStatus();
-            status.setStackID(cfStack.getStackId());
-            status.setOutputs(convertToOutput(cfStack.getOutputs()));
-            stack.setStatus(status);
+            StackStatus stackStatus = new StackStatus();
+            stackStatus.setStatus("DELETED");
+            stack.setStatus(stackStatus);
+            stack.getMetadata().getFinalizers().stream().forEach(log::info);
             return DeleteControl.DEFAULT_DELETE;
         }
         catch (Exception e) {
