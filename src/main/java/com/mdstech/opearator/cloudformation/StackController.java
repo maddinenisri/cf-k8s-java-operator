@@ -3,7 +3,6 @@ package com.mdstech.opearator.cloudformation;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.cloudformation.AmazonCloudFormation;
 import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder;
@@ -15,6 +14,10 @@ import com.amazonaws.services.securitytoken.model.Credentials;
 import io.javaoperatorsdk.operator.api.*;
 
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -28,7 +31,6 @@ public class StackController implements ResourceController<Stack> {
     private static final String DEFAULT_TAGS = "DEFAULT_TAGS";
     private static final String DEFAULT_CAPABILITIES = "DEFAULT_CAPABILITIES";
     public static final String STATUS_CHECK_WAIT_TIME_IN_SEC="STATUS_CHECK_WAIT_TIME_IN_SEC";
-    private static final Tag STANDARD_TAG  = new Tag().withKey("kubernetes.io/controlled-by").withValue("cloudformation.mdstechinc.com/operator");
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private String assumeRoleArn;
@@ -65,23 +67,37 @@ public class StackController implements ResourceController<Stack> {
         log.info("Execution createOrUpdateResource for: {}", stack.getMetadata().getName());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
         stack.getMetadata().getOwnerReferences().stream().forEach(or -> log.info(or.toString()));
-        boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName());
-        List<com.amazonaws.services.cloudformation.model.StackStatus> statuses = null;
+        boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName(), com.amazonaws.services.cloudformation.model.StackStatus.CREATE_COMPLETE);
+        List<com.amazonaws.services.cloudformation.model.StackStatus> statuses;
         if(isStackExist) {
-            updateStack(amazonCloudFormation, stack);
+            log.info("Before update stack: {}", stack.getMetadata().getName());
+            try {
+                updateStack(amazonCloudFormation, stack);
+            }
+            catch (AmazonCloudFormationException ex) {
+                log.error(ex.getErrorCode()+":"+ex.getErrorMessage());
+            }
             statuses = Arrays.asList(com.amazonaws.services.cloudformation.model.StackStatus.UPDATE_COMPLETE,
                     com.amazonaws.services.cloudformation.model.StackStatus.UPDATE_ROLLBACK_FAILED,
                     com.amazonaws.services.cloudformation.model.StackStatus.UPDATE_ROLLBACK_COMPLETE);
         }
         else {
-            createStack(amazonCloudFormation, stack);
+            log.info("Before create stack: {}", stack.getMetadata().getName());
+            try {
+                createStack(amazonCloudFormation, stack);
+            }
+            catch (AmazonCloudFormationException ex) {
+                log.error(ex.getErrorCode()+":"+ex.getErrorMessage());
+            }
             statuses = Arrays.asList(com.amazonaws.services.cloudformation.model.StackStatus.CREATE_COMPLETE,
                     com.amazonaws.services.cloudformation.model.StackStatus.CREATE_FAILED,
                     com.amazonaws.services.cloudformation.model.StackStatus.ROLLBACK_FAILED);
         }
         try {
             com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName(), statuses);
-            updateStatus(stack, cfStack, isStackExist);
+            if(cfStack != null) {
+                updateStatus(stack, cfStack, isStackExist);
+            }
             return UpdateControl.updateStatusSubResource(stack);
         }
         catch (Exception e) {
@@ -103,7 +119,9 @@ public class StackController implements ResourceController<Stack> {
     }
 
     private void updateStatus(Stack stack, com.amazonaws.services.cloudformation.model.Stack cfStack, boolean isUpdateStackEvent) {
+        log.info("Before updated status for: {} and Update event {} ", stack.getMetadata().getName(), isUpdateStackEvent);
         Map<String, String> outputs = convertToOutput(cfStack.getOutputs());
+        log.info("Status Outputs "+ outputs);
         if(!(isUpdateStackEvent ||
                 stack.getStatus() == null ||
                 cfStack.getStackId().equals(stack.getStatus().getStackID()) ||
@@ -119,14 +137,15 @@ public class StackController implements ResourceController<Stack> {
     public DeleteControl deleteResource(Stack stack, Context<Stack> context) {
         log.info("Execution deleteResource for: {}", stack.getMetadata().getName());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
-        boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName());
-        if(stack.getMetadata().getDeletionTimestamp() == null && !isStackExist) {
+        boolean isStackDeleted = isStackExist(amazonCloudFormation, stack.getMetadata().getName(), com.amazonaws.services.cloudformation.model.StackStatus.DELETE_COMPLETE);
+        log.info("Stack {} exists: {} and metadata timestamp {}", stack.getMetadata().getName(), isStackDeleted, stack.getMetadata().getDeletionTimestamp());
+        if(isStackDeleted) {
             return DeleteControl.DEFAULT_DELETE;
         }
         DeleteStackRequest deleteStackRequest = new DeleteStackRequest().withStackName(stack.getMetadata().getName());
         amazonCloudFormation.deleteStack(deleteStackRequest);
         try {
-            com.amazonaws.services.cloudformation.model.Stack cfStack = waitForCompletion(amazonCloudFormation, stack.getMetadata().getName(),
+            waitForCompletion(amazonCloudFormation, stack.getMetadata().getName(),
                     Arrays.asList(com.amazonaws.services.cloudformation.model.StackStatus.DELETE_COMPLETE,
                             com.amazonaws.services.cloudformation.model.StackStatus.DELETE_FAILED));
             StackStatus stackStatus = new StackStatus();
@@ -231,45 +250,66 @@ public class StackController implements ResourceController<Stack> {
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
-        amazonCloudFormation.updateStack(updateStackRequest);
+        UpdateStackResult updateStackResult = amazonCloudFormation.updateStack(updateStackRequest);
+        log.info(updateStackResult.toString());
     }
 
-    private boolean isStackExist(AmazonCloudFormation amazonCloudFormation, String stackName) {
-        log.info("Before verifying stack exist...");
+    private boolean isStackExist(AmazonCloudFormation amazonCloudFormation, String stackName, com.amazonaws.services.cloudformation.model.StackStatus stackStatus) {
+        log.info("Before verifying stack {} and status {} exists...", stackName, stackStatus);
         ListStacksResult listStacksResult = amazonCloudFormation.listStacks();
-        long count = listStacksResult.getStackSummaries().stream().filter(stackSummary -> stackSummary.getStackName().equals(stackName)).count();
-        return count > 0;
+        List<String> stackSummaries =
+                listStacksResult
+                        .getStackSummaries()
+                        .stream()
+//                        .map(stackSummary -> {
+//                            log.info("Stack {},{} and status {},{} and equals {} ", stackSummary.getStackName(), stackName, stackSummary.getStackStatus(), stackStatus, stackSummary.getStackName().equals(stackName) && stackSummary.getStackStatus().equals(stackStatus.toString()));
+//                            return stackSummary;})
+                        .filter(stackSummary -> stackSummary.getStackName().equals(stackName) && stackSummary.getStackStatus().equals(stackStatus.toString()))
+                        .map(StackSummary::getStackName)
+                        .collect(Collectors.toList());
+        stackSummaries.stream().forEach(stackSummary -> log.info("... ... Stack name: {} ", stackSummary));
+        log.info("Stack {} exsits : {}" + stackName, stackSummaries.contains(stackName));
+        return stackSummaries.contains(stackName);
     }
 
-    private com.amazonaws.services.cloudformation.model.Stack waitForCompletion(
-            AmazonCloudFormation amazonCloudFormation,
-            String stackName,
-            List<com.amazonaws.services.cloudformation.model.StackStatus> waitStatuses) throws Exception {
+    private com.amazonaws.services.cloudformation.model.Stack waitForCompletion(AmazonCloudFormation amazonCloudFormation,
+                                     String stackName,
+                                     List<com.amazonaws.services.cloudformation.model.StackStatus> waitStatuses) throws InterruptedException {
         DescribeStacksRequest wait = new DescribeStacksRequest();
         wait.setStackName(stackName);
-        Boolean completed = false;
-        log.info("Waiting for cloudformation stack completion");
-        com.amazonaws.services.cloudformation.model.Stack lastStack = null;
-        while (!completed) {
-            List<com.amazonaws.services.cloudformation.model.Stack> stacks = amazonCloudFormation.describeStacks(wait).getStacks();
-            if (stacks.isEmpty())
-            {
-                completed   = true;
-            } else {
-                for (com.amazonaws.services.cloudformation.model.Stack stack : stacks) {
-                    if(waitStatuses.contains(com.amazonaws.services.cloudformation.model.StackStatus.fromValue(stack.getStackStatus()))) {
-                        completed = true;
-                        lastStack = stack;
-                    }
-                }
-            }
-            log.info("Waiting for cloudformation stack completion...");
-            if (!completed) {
-                Thread.sleep(statusWaitTime);
-            }
+        log.info("Waiting for cloud formation stack completion");
+        List<com.amazonaws.services.cloudformation.model.Stack> stacks = amazonCloudFormation.describeStacks(wait).getStacks();
+        if (stacks.isEmpty()) {
+            return null;
         }
-        log.info("Cloudformation process is completed");
-        return lastStack;
+        else {
+            BlockingQueue<com.amazonaws.services.cloudformation.model.Stack> stackBlockingQueue = new LinkedBlockingQueue<>();
+            new Thread(() -> {
+                try {
+                    List<com.amazonaws.services.cloudformation.model.Stack> cfStacks = amazonCloudFormation.describeStacks(wait).getStacks();
+                    com.amazonaws.services.cloudformation.model.Stack stack =
+                            cfStacks
+                                    .stream()
+                                    .filter(cfStack -> cfStack.getStackName().equals(stackName))
+                                    .findFirst()
+                                    .orElse(new com.amazonaws.services.cloudformation.model.Stack());
+                    log.info("Stack " + stack);
+                    log.info("Stack returned status "+ stack.getStackStatus());
+                    AtomicBoolean waiting = new AtomicBoolean(true);
+                    if(waitStatuses.contains(com.amazonaws.services.cloudformation.model.StackStatus.fromValue(stack.getStackStatus()))) {
+                        stackBlockingQueue.put(stack);
+                        waiting.set(false);
+                    }
+                    while(waiting.get()) {
+                        TimeUnit.SECONDS.sleep(10);
+                        log.info("Stack returned status "+ stack.getStackStatus());
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+            return stackBlockingQueue.poll(4, TimeUnit.SECONDS);
+        }
     }
 
     private Map<String, String> convertToOutput(List<Output> outputs) {

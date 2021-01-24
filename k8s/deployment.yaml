@@ -18,7 +18,7 @@ spec:
       serviceAccount: cf-stack-operator
       containers:
         - name: operator
-          image: mdstech/cf-k8s-java-operator:1.0.15
+          image: mdstech/cf-k8s-java-operator:1.0.31
           imagePullPolicy: Always
           ports:
             - containerPort: 80
