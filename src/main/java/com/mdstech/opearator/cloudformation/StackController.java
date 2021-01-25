@@ -261,13 +261,9 @@ public class StackController implements ResourceController<Stack> {
                 listStacksResult
                         .getStackSummaries()
                         .stream()
-//                        .map(stackSummary -> {
-//                            log.info("Stack {},{} and status {},{} and equals {} ", stackSummary.getStackName(), stackName, stackSummary.getStackStatus(), stackStatus, stackSummary.getStackName().equals(stackName) && stackSummary.getStackStatus().equals(stackStatus.toString()));
-//                            return stackSummary;})
                         .filter(stackSummary -> stackSummary.getStackName().equals(stackName) && stackSummary.getStackStatus().equals(stackStatus.toString()))
                         .map(StackSummary::getStackName)
                         .collect(Collectors.toList());
-        stackSummaries.stream().forEach(stackSummary -> log.info("... ... Stack name: {} ", stackSummary));
         log.info("Stack {} exsits : {}" + stackName, stackSummaries.contains(stackName));
         return stackSummaries.contains(stackName);
     }
@@ -293,8 +289,7 @@ public class StackController implements ResourceController<Stack> {
                                     .filter(cfStack -> cfStack.getStackName().equals(stackName))
                                     .findFirst()
                                     .orElse(new com.amazonaws.services.cloudformation.model.Stack());
-                    log.info("Stack " + stack);
-                    log.info("Stack returned status "+ stack.getStackStatus());
+                    log.info("Stack {} status {} ", stack.getStackName(), stack.getStackStatus());
                     AtomicBoolean waiting = new AtomicBoolean(true);
                     if(waitStatuses.contains(com.amazonaws.services.cloudformation.model.StackStatus.fromValue(stack.getStackStatus()))) {
                         stackBlockingQueue.put(stack);
@@ -302,7 +297,7 @@ public class StackController implements ResourceController<Stack> {
                     }
                     while(waiting.get()) {
                         TimeUnit.SECONDS.sleep(10);
-                        log.info("Stack returned status "+ stack.getStackStatus());
+                        log.info("Stack returned status {} and after thread wakeup", stack.getStackStatus());
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
