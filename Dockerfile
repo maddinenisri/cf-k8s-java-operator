@@ -1,4 +1,4 @@
-FROM openjdk:12-alpine
+FROM adoptopenjdk/openjdk12:alpine
 
 ENTRYPOINT ["java", "-jar", "/usr/share/operator/operator.jar"]
 
