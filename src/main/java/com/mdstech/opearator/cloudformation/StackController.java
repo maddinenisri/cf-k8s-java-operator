@@ -233,7 +233,7 @@ public class StackController implements ResourceController<Stack> {
                 .withStackName(stack.getMetadata().getName())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
                 .withTemplateURL(stack.getSpec().getTemplateURL())
-                .withTemplateBody(stack.getSpec().getTemplate())
+                .withTemplateBody(stack.getSpec().getTemplateURL() == null ? stack.getSpec().getTemplate() : null)
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
         amazonCloudFormation.createStack(createStackRequest);
@@ -245,7 +245,7 @@ public class StackController implements ResourceController<Stack> {
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withTemplateURL(stack.getSpec().getTemplateURL())
-                .withTemplateBody(stack.getSpec().getTemplate())
+                .withTemplateBody(stack.getSpec().getTemplateURL() == null ? stack.getSpec().getTemplate() : null)
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
