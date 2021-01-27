@@ -45,6 +45,8 @@ spec:
                   type: object
                 template:
                   type: string
+                templateURL:
+                  type: string
                 customRoleARN:
                   type: string
               required:

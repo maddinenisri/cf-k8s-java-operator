@@ -30,14 +30,12 @@ public class StackController implements ResourceController<Stack> {
     public static final String REGION = "AWS_REGION";
     private static final String DEFAULT_TAGS = "DEFAULT_TAGS";
     private static final String DEFAULT_CAPABILITIES = "DEFAULT_CAPABILITIES";
-    public static final String STATUS_CHECK_WAIT_TIME_IN_SEC="STATUS_CHECK_WAIT_TIME_IN_SEC";
-    private final Logger log = LoggerFactory.getLogger(getClass());
+    private static final Logger log = LoggerFactory.getLogger(StackController.class);
 
     private String assumeRoleArn;
     private String region;
     private Collection<String>  defaultCapabilities;
     private List<Tag> defaultTags;
-    private long statusWaitTime = 10000;
     private String roleSessionName = "awsCFSession";
 
     public StackController() {
@@ -45,14 +43,13 @@ public class StackController implements ResourceController<Stack> {
     }
 
     private void initializeEnvProperties() {
-        Arrays.asList(ASSUME_ROLE, REGION, DEFAULT_CAPABILITIES, DEFAULT_TAGS, STATUS_CHECK_WAIT_TIME_IN_SEC).stream().forEach(key -> {
+        Arrays.asList(ASSUME_ROLE, REGION, DEFAULT_CAPABILITIES, DEFAULT_TAGS).stream().forEach(key -> {
             log.info(String.format("%s:  %s", key, System.getenv(key)));
         });
         region = getProperty(REGION, Regions.US_EAST_1.getName());
         assumeRoleArn = getProperty(ASSUME_ROLE, null);
         defaultCapabilities = convertToCapabilities(getProperty(DEFAULT_CAPABILITIES, null));
         defaultTags = convertToDefaultTags(getProperty(DEFAULT_TAGS, null));
-        statusWaitTime = Long.parseLong(getProperty(STATUS_CHECK_WAIT_TIME_IN_SEC, "10"))*1000;
     }
 
     private String getProperty(String key, String defaultValue) {
@@ -235,6 +232,7 @@ public class StackController implements ResourceController<Stack> {
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
+                .withTemplateURL(stack.getSpec().getTemplateURL())
                 .withTemplateBody(stack.getSpec().getTemplate())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
@@ -246,6 +244,7 @@ public class StackController implements ResourceController<Stack> {
         UpdateStackRequest updateStackRequest = new UpdateStackRequest()
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
+                .withTemplateURL(stack.getSpec().getTemplateURL())
                 .withTemplateBody(stack.getSpec().getTemplate())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
