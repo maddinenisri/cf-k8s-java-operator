@@ -232,10 +232,14 @@ public class StackController implements ResourceController<Stack> {
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
-                .withTemplateURL(stack.getSpec().getTemplateURL())
-                .withTemplateBody(stack.getSpec().getTemplateURL() == null ? stack.getSpec().getTemplate() : null)
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
+        if(stack.getSpec().getTemplateURL() == null) {
+            createStackRequest.setTemplateBody(stack.getSpec().getTemplate());
+        }
+        else {
+            createStackRequest.setTemplateURL(stack.getSpec().getTemplateURL());
+        }
         amazonCloudFormation.createStack(createStackRequest);
     }
 
@@ -244,11 +248,15 @@ public class StackController implements ResourceController<Stack> {
         UpdateStackRequest updateStackRequest = new UpdateStackRequest()
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
-                .withTemplateURL(stack.getSpec().getTemplateURL())
-                .withTemplateBody(stack.getSpec().getTemplateURL() == null ? stack.getSpec().getTemplate() : null)
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
+        if(stack.getSpec().getTemplateURL() == null) {
+            updateStackRequest.setTemplateBody(stack.getSpec().getTemplate());
+        }
+        else {
+            updateStackRequest.setTemplateURL(stack.getSpec().getTemplateURL());
+        }
         UpdateStackResult updateStackResult = amazonCloudFormation.updateStack(updateStackRequest);
         log.info(updateStackResult.toString());
     }
