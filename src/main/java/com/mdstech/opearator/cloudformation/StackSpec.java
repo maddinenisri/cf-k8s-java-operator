@@ -1,5 +1,7 @@
 package com.mdstech.opearator.cloudformation;
 
+import org.apache.commons.lang3.builder.ToStringBuilder;
+
 import java.util.Map;
 
 public class StackSpec {
@@ -47,5 +49,16 @@ public class StackSpec {
 
     public void setTemplateURL(String templateURL) {
         this.templateURL = templateURL;
+    }
+
+    @Override
+    public String toString() {
+        return new ToStringBuilder(this)
+                .append("tags", tags)
+                .append("parameters", parameters)
+                .append("template", template)
+                .append("templateURL", templateURL)
+                .append("customRoleARN", customRoleARN)
+                .toString();
     }
 }

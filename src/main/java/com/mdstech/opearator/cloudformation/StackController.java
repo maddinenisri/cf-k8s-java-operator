@@ -61,10 +61,10 @@ public class StackController implements ResourceController<Stack> {
 
     @Override
     public UpdateControl<Stack> createOrUpdateResource(Stack stack, Context<Stack> context) {
-        log.info("Execution createOrUpdateResource for: {}", stack.getMetadata().getName());
+        log.info("Execution createOrUpdateResource for: {} and Stack is {}", stack.getMetadata().getName(), stack.getSpec());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
         stack.getMetadata().getOwnerReferences().stream().forEach(or -> log.info(or.toString()));
-        boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName(), com.amazonaws.services.cloudformation.model.StackStatus.CREATE_COMPLETE);
+        boolean isStackExist = isStackExist(amazonCloudFormation, stack.getMetadata().getName(), Arrays.asList("CREATE_COMPLETE", "UPDATE_COMPLETE"));
         List<com.amazonaws.services.cloudformation.model.StackStatus> statuses;
         if(isStackExist) {
             log.info("Before update stack: {}", stack.getMetadata().getName());
@@ -134,7 +134,7 @@ public class StackController implements ResourceController<Stack> {
     public DeleteControl deleteResource(Stack stack, Context<Stack> context) {
         log.info("Execution deleteResource for: {}", stack.getMetadata().getName());
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
-        boolean isStackDeleted = isStackExist(amazonCloudFormation, stack.getMetadata().getName(), com.amazonaws.services.cloudformation.model.StackStatus.DELETE_COMPLETE);
+        boolean isStackDeleted = isStackExist(amazonCloudFormation, stack.getMetadata().getName(), Arrays.asList("DELETE_COMPLETE"));
         log.info("Stack {} exists: {} and metadata timestamp {}", stack.getMetadata().getName(), isStackDeleted, stack.getMetadata().getDeletionTimestamp());
         if(isStackDeleted) {
             return DeleteControl.DEFAULT_DELETE;
@@ -232,14 +232,11 @@ public class StackController implements ResourceController<Stack> {
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
+                .withTemplateBody(stack.getSpec().getTemplate())
+                .withTemplateURL(stack.getSpec().getTemplateURL())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
-        if(stack.getSpec().getTemplateURL() == null) {
-            createStackRequest.setTemplateBody(stack.getSpec().getTemplate());
-        }
-        else {
-            createStackRequest.setTemplateURL(stack.getSpec().getTemplateURL());
-        }
+        log.info("Create Stack {}", createStackRequest);
         amazonCloudFormation.createStack(createStackRequest);
     }
 
@@ -249,26 +246,25 @@ public class StackController implements ResourceController<Stack> {
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
+                .withTemplateBody(stack.getSpec().getTemplate())
+                .withTemplateURL(stack.getSpec().getTemplateURL())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
-        if(stack.getSpec().getTemplateURL() == null) {
-            updateStackRequest.setTemplateBody(stack.getSpec().getTemplate());
-        }
-        else {
-            updateStackRequest.setTemplateURL(stack.getSpec().getTemplateURL());
-        }
+        log.info("UpdateStackRequest {}", updateStackRequest);
+
         UpdateStackResult updateStackResult = amazonCloudFormation.updateStack(updateStackRequest);
         log.info(updateStackResult.toString());
     }
 
-    private boolean isStackExist(AmazonCloudFormation amazonCloudFormation, String stackName, com.amazonaws.services.cloudformation.model.StackStatus stackStatus) {
-        log.info("Before verifying stack {} and status {} exists...", stackName, stackStatus);
-        ListStacksResult listStacksResult = amazonCloudFormation.listStacks();
+    private boolean isStackExist(AmazonCloudFormation amazonCloudFormation, String stackName, List<String> stackStatuses) {
+        log.info("Before verifying stack {} and status {} exists...", stackName, stackStatuses);
+        ListStacksResult listStacksResult = amazonCloudFormation.listStacks(
+                new ListStacksRequest().withStackStatusFilters(stackStatuses));
         List<String> stackSummaries =
                 listStacksResult
                         .getStackSummaries()
                         .stream()
-                        .filter(stackSummary -> stackSummary.getStackName().equals(stackName) && stackSummary.getStackStatus().equals(stackStatus.toString()))
+                        .filter(stackSummary -> stackSummary.getStackName().equals(stackName) && stackStatuses.contains(stackSummary.getStackStatus()))
                         .map(StackSummary::getStackName)
                         .collect(Collectors.toList());
         log.info("Stack {} exsits : {}" + stackName, stackSummaries.contains(stackName));

@@ -52,7 +52,6 @@ spec:
               required:
                 - parameters
                 - tags
-                - template
               type: object
             status:
               description: StackStatus defines the observed state of Stack
