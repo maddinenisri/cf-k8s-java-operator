@@ -137,11 +137,15 @@ public class StackController implements ResourceController<Stack> {
         boolean isStackDeleted = isStackExist(amazonCloudFormation, stack.getMetadata().getName(), Arrays.asList("DELETE_COMPLETE"));
         log.info("Stack {} exists: {} and metadata timestamp {}", stack.getMetadata().getName(), isStackDeleted, stack.getMetadata().getDeletionTimestamp());
         if(isStackDeleted) {
+            StackStatus stackStatus = new StackStatus();
+            stackStatus.setStatus("DELETED");
+            stack.setStatus(stackStatus);
+            stack.getMetadata().getFinalizers().stream().forEach(log::info);
             return DeleteControl.DEFAULT_DELETE;
         }
-        DeleteStackRequest deleteStackRequest = new DeleteStackRequest().withStackName(stack.getMetadata().getName());
-        amazonCloudFormation.deleteStack(deleteStackRequest);
         try {
+            DeleteStackRequest deleteStackRequest = new DeleteStackRequest().withStackName(stack.getMetadata().getName());
+            amazonCloudFormation.deleteStack(deleteStackRequest);
             waitForCompletion(amazonCloudFormation, stack.getMetadata().getName(),
                     Arrays.asList(com.amazonaws.services.cloudformation.model.StackStatus.DELETE_COMPLETE,
                             com.amazonaws.services.cloudformation.model.StackStatus.DELETE_FAILED));
@@ -156,7 +160,7 @@ public class StackController implements ResourceController<Stack> {
             StackStatus status = new StackStatus();
             status.setStatus("ERROR");
             stack.setStatus(status);
-            return DeleteControl.NO_FINALIZER_REMOVAL;
+            return DeleteControl.DEFAULT_DELETE;
         }
     }
 
