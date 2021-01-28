@@ -5,9 +5,9 @@ import java.util.Map;
 public class StackSpec {
     private Map<String, String> tags;
     private Map<String, String> parameters;
-    private String template = "";
-    private String templateURL = "";
-    private String customRoleARN = "";
+//    private String template;
+    private String templateURL;
+    private String customRoleARN;
 
     public Map<String, String> getTags() {
         return tags;
@@ -25,13 +25,13 @@ public class StackSpec {
         this.parameters = parameters;
     }
 
-    public String getTemplate() {
-        return template;
-    }
-
-    public void setTemplate(String template) {
-        this.template = template;
-    }
+//    public String getTemplate() {
+//        return template;
+//    }
+//
+//    public void setTemplate(String template) {
+//        this.template = template;
+//    }
 
     public String getCustomRoleARN() {
         return customRoleARN;

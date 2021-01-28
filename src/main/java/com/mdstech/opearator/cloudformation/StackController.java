@@ -232,7 +232,7 @@ public class StackController implements ResourceController<Stack> {
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
-                .withTemplateBody(stack.getSpec().getTemplate())
+//                .withTemplateBody(stack.getSpec().getTemplate())
                 .withTemplateURL(stack.getSpec().getTemplateURL())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
@@ -246,7 +246,7 @@ public class StackController implements ResourceController<Stack> {
                 .withCapabilities(defaultCapabilities)
                 .withStackName(stack.getMetadata().getName())
                 .withRoleARN(stack.getSpec().getCustomRoleARN())
-                .withTemplateBody(stack.getSpec().getTemplate())
+//                .withTemplateBody(stack.getSpec().getTemplate())
                 .withTemplateURL(stack.getSpec().getTemplateURL())
                 .withParameters(convertToParameters(stack.getSpec().getParameters()))
                 .withTags(convertToTags(stack.getSpec().getTags()));
