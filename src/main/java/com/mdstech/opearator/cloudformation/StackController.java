@@ -126,6 +126,7 @@ public class StackController implements ResourceController<Stack> {
             StackStatus status = new StackStatus();
             status.setStackID(cfStack.getStackId());
             status.setOutputs(outputs);
+            status.setStatus(isUpdateStackEvent ? "UPDATED" : "CREATED");
             stack.setStatus(status);
         }
     }
