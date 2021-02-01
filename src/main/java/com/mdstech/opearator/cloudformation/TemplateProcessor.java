@@ -91,6 +91,7 @@ public class TemplateProcessor {
                         .getStackSummaries()
                         .stream()
                         .filter(stackSummary -> stackSummary.getStackName().equals(stackName))
+                        .peek(stackSummary -> log.info("Stack {} and status {} ", stackSummary.getStackName(), stackSummary.getStackStatus()))
                         .map(StackSummary::getStackStatus)
                         .collect(Collectors.toList());
         log.info("Stack {} Statuses {} ", stackName, stackStatuses);
