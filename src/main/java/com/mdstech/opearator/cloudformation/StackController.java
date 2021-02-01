@@ -143,7 +143,7 @@ public class StackController implements ResourceController<Stack> {
         AmazonCloudFormation amazonCloudFormation = createAWSClientSession();
         TemplateProcessor templateProcessor = new TemplateProcessor(amazonCloudFormation, defaultTags, defaultCapabilities);
         boolean isStackDeleted = templateProcessor.isStackDeletable(stack.getMetadata().getName());
-        log.info("Stack {} exists: {} and metadata timestamp {}", stack.getMetadata().getName(), isStackDeleted, stack.getMetadata().getDeletionTimestamp());
+        log.info("Stack {} deletable : {} and metadata timestamp {}", stack.getMetadata().getName(), isStackDeleted, stack.getMetadata().getDeletionTimestamp());
         if(!isStackDeleted) {
             StackStatus stackStatus = new StackStatus();
             stackStatus.setStatus("DELETED");

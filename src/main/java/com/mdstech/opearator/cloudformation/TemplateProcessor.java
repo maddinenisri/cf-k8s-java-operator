@@ -93,6 +93,7 @@ public class TemplateProcessor {
                         .filter(stackSummary -> stackSummary.getStackName().equals(stackName))
                         .map(StackSummary::getStackStatus)
                         .collect(Collectors.toList());
+        log.info("Stack {} Statuses {} ", stackName, stackStatuses);
         return !( stackStatuses == null || stackStatuses.isEmpty() || stackStatuses.contains("DELETE_COMPLETE"));
     }
 
