@@ -242,12 +242,12 @@ public class StackController implements ResourceController<Stack> {
                     }
                 }
             }
-            log.info("Waiting for cloudformation stack completion...");
+            log.debug("Waiting for cloudformation stack completion...");
             if (!completed) {
-                Thread.sleep(1000);
+                Thread.sleep(60000);
             }
         }
-        log.info("Cloudformation process is completed");
+        log.info("Cloud formation process is completed");
         return lastStack;
     }
 
